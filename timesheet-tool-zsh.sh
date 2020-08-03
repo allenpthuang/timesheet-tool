@@ -13,10 +13,14 @@ NC='\033[0m' # No Color
 
 PRINT_CSV_METHOD='print_table_csv'
 
+readonly SAVED_STATUS_FOLDER="$HOME/.timesheet_tool/saved"
+readonly ARRAY_LIST=(tasks durations num_of_subtasks_under_tasks subtasks sub_durations)
+
 declare -a tasks
 declare -a durations
 declare -a num_of_subtasks_under_tasks
-declare -A subtasks 2>/dev/null && declare -A sub_durations || echo "Subtasks are not supported in macOS!"
+declare -A subtasks
+declare -A sub_durations
 
 
 function roundhalves() {
@@ -28,7 +32,6 @@ function displaytime() {
 }
 
 function get_pause_duration() {
-  local end="false"
   read -s -r -k 1 "?Press any key to continue..."
   echo $(( $SECONDS - $1 ))
 }
@@ -208,6 +211,111 @@ function print_results() {
   exit
 }
 
+function save_to_file() {
+  echo ""
+  echo -n "Make up a filename to save current timesheet status (don't be too creative!): "
+  read filename  
+
+  if [[ ! -d "$SAVED_STATUS_FOLDER" ]]; then
+    mkdir -p "$SAVED_STATUS_FOLDER"
+  fi
+  
+  if [[ -f "$SAVED_STATUS_FOLDER/$filename" ]]; then
+    echo "It seems you already have saved status under this name!"
+    echo -n "If we proceed, your previous record will be lost. Are you sure? (y/n) "
+    read yesno
+    if [[ ! "$yesno" =~ ^(y|yes|Y)$ ]]; then
+      echo "OK :)"
+      return
+    fi
+  fi
+  
+  declare -p "${ARRAY_LIST[@]}" > "$SAVED_STATUS_FOLDER/$filename"
+  if [[ $? == 0 ]]; then
+    echo "Current status saved to $SAVED_STATUS_FOLDER/$filename!"
+  else
+    echo "Something went wrong! Status not saved."
+  fi
+}
+
+function read_from_file() {
+  echo ""
+  local saved_files=( )
+  for i in $SAVED_STATUS_FOLDER/*(N); do
+    [[ -f "$i" ]] && saved_files+=( "$i" )
+  done
+
+  if [[ -z $saved_files ]]; then
+    echo "There seems no saved status to load!"
+  else
+    echo "-----------------------------------------------"
+    for k in {1..$#saved_files}; do
+      printf "%-4s %s\n" "$k" "${saved_files[$k]}"
+    done
+    echo "-----------------------------------------------"
+    echo -n "Choose from the above: "
+    local chosen_file_index=$(safe_select_array_index ${#saved_files[@]})
+    echo "I'm going to load records from ${saved_files[$chosen_file_index]}."
+    echo "This will OVERRIDE the current timesheet!"
+    read "?Are you sure? (y/n) " yesno
+    if [[ "$yesno" =~ ^(y|yes|Y)$ ]]; then
+      echo -n "OK, loading... "
+      source "${saved_files[$chosen_file_index]}"
+      echo "done!"
+    else
+      echo "OK :)"
+    fi
+  fi
+}
+
+function delete_status_file() {
+  echo ""
+  read "?Are you really sure? (y/n) " yesno
+  if [[ "$yesno" =~ ^(y|yes|Y)$ ]]; then
+    local saved_files=( )
+    for i in $SAVED_STATUS_FOLDER/*(N); do
+      [[ -f "$i" ]] && saved_files+=( "$i" )
+    done
+
+    if [[ -z $saved_files ]]; then
+      echo "There seems no saved status to delete!"
+    else
+      echo "-----------------------------------------------"
+      for k in {1..$#saved_files}; do
+        printf "%-4s %s\n" "$k" "${saved_files[$k]}"
+      done
+      echo "-----------------------------------------------"
+      echo -n "Choose from the above: "
+      local chosen_file_index=$(safe_select_array_index ${#saved_files[@]})
+      echo "I'm going to DELETE records from ${saved_files[$chosen_file_index]}."
+      echo "THERE IS NO UNDO."
+      read "?Are you really sure? (y/n) " yesno
+      if [[ "$yesno" =~ ^(y|yes|Y)$ ]]; then
+        echo -n "OK, deleting... "
+        rm "${saved_files[$chosen_file_index]}"
+        echo "done!"
+      else
+        echo "OK :)"
+      fi
+    fi
+  else
+    echo "OK :)"
+  fi
+}
+
+function save_load_delete_status() {
+  echo ""
+  echo -e "${WHITE}(s)${NC}ave, ${WHITE}(l)${NC}oad or ${WHITE}(d)${NC}elete timesheet status?" \
+          "Or anything else to return."
+  echo -n "🤖️ (s/l/d) "
+  read -k 1 sol
+  case $sol in
+    s|S) save_to_file ;;
+    l|L) read_from_file ;;
+    d|D) delete_status_file ;;
+  esac
+}
+
 function main() {
   echo -e "Do you want to ${WHITE}(s)${NC}tart or ${WHITE}(c)${NC}ontinue a task?"
   echo -e "You can also print the current ${WHITE}(t)${NC}imesheet or e${WHITE}(x)${NC}it."
@@ -219,6 +327,7 @@ function main() {
     c|C) continue_task ;;
     t|T) print_table ;;
     x|X) print_results ;;
+    m|M) save_load_delete_status ;;
     *) echo "I don't understand! 🤔" ;;
   esac
   echo ""
