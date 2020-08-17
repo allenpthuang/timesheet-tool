@@ -31,6 +31,13 @@ function displaytime() {
   printf '%02dh:%02dm:%02ds\n' $(($1/3600)) $(($1%3600/60)) $(($1%60))
 }
 
+function yes_no_prompt() {
+  local yesno
+  echo -n "Are you really sure? (y/n) "
+  read yesno
+  [[ "$yesno" =~ ^(y|yes|Y)$ ]] && return 0 || (echo "OK :)"; return 1)
+}
+
 function get_pause_duration() {
   read -s -r -k 1 "?Press any key to continue..."
   echo $(( $SECONDS - $1 ))
@@ -222,12 +229,8 @@ function save_to_file() {
   
   if [[ -f "$SAVED_STATUS_FOLDER/$filename" ]]; then
     echo "It seems you already have saved status under this name!"
-    echo -n "If we proceed, your previous record will be lost. Are you sure? (y/n) "
-    read yesno
-    if [[ ! "$yesno" =~ ^(y|yes|Y)$ ]]; then
-      echo "OK :)"
-      return
-    fi
+    echo -n "If we proceed, your previous record will be lost. "
+    yes_no_prompt || return
   fi
   
   declare -p "${ARRAY_LIST[@]}" > "$SAVED_STATUS_FOLDER/$filename"
@@ -257,21 +260,17 @@ function read_from_file() {
     local chosen_file_index=$(safe_select_array_index ${#saved_files[@]})
     echo "I'm going to load records from ${saved_files[$chosen_file_index]}."
     echo "This will OVERRIDE the current timesheet!"
-    read "?Are you sure? (y/n) " yesno
-    if [[ "$yesno" =~ ^(y|yes|Y)$ ]]; then
+    if yes_no_prompt; then
       echo -n "OK, loading... "
       source "${saved_files[$chosen_file_index]}"
       echo "done!"
-    else
-      echo "OK :)"
     fi
   fi
 }
 
 function delete_status_file() {
   echo ""
-  read "?Are you really sure? (y/n) " yesno
-  if [[ "$yesno" =~ ^(y|yes|Y)$ ]]; then
+  if yes_no_prompt; then
     local saved_files=( )
     for i in $SAVED_STATUS_FOLDER/*(N); do
       [[ -f "$i" ]] && saved_files+=( "$i" )
@@ -289,17 +288,12 @@ function delete_status_file() {
       local chosen_file_index=$(safe_select_array_index ${#saved_files[@]})
       echo "I'm going to DELETE records from ${saved_files[$chosen_file_index]}."
       echo "THERE IS NO UNDO."
-      read "?Are you really sure? (y/n) " yesno
-      if [[ "$yesno" =~ ^(y|yes|Y)$ ]]; then
+      if yes_no_prompt; then
         echo -n "OK, deleting... "
         rm "${saved_files[$chosen_file_index]}"
         echo "done!"
-      else
-        echo "OK :)"
       fi
     fi
-  else
-    echo "OK :)"
   fi
 }
 
@@ -326,7 +320,7 @@ function main() {
     s|S) start_task ;;
     c|C) continue_task ;;
     t|T) print_table ;;
-    x|X) print_results ;;
+    x|X) yes_no_prompt && print_results ;;
     m|M) save_load_delete_status ;;
     *) echo "I don't understand! 🤔" ;;
   esac
